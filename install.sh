@@ -99,7 +99,7 @@ detect_platform() {
   case "$os" in
     Darwin) os=darwin ;;
     Linux) os=linux ;;
-    MINGW*|MSYS*|CYGWIN*) fail "Windows isn't supported by this installer yet; use WSL (Ubuntu) and run it there" ;;
+    MINGW*|MSYS*|CYGWIN*) fail "on Windows, use the PowerShell installer: powershell -ExecutionPolicy Bypass -c \"iex ((New-Object Net.WebClient).DownloadString('https://github.com/$REPO/releases/latest/download/install.ps1'))\"" ;;
     *) fail "unsupported system: $os" ;;
   esac
   case "$arch" in

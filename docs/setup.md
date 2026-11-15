@@ -19,8 +19,8 @@ about five minutes. If you'd rather have an AI agent do the install, skip to
 **What you need**
 
 - A Jortt account with access to the administration you want to connect.
-- macOS or Linux. On Windows, install [WSL](https://learn.microsoft.com/windows/wsl/install) and run
-  everything inside it.
+- macOS 13 or newer, Linux, or Windows 10 (version 1809 or newer) or Windows 11, on a 64-bit Intel/AMD or ARM
+  processor.
 - A terminal. The setup asks for your Client Secret in a hidden prompt, so it needs a real terminal.
 
 Your credentials are entered in your own terminal and saved on your own computer. They don't go in this
@@ -63,6 +63,8 @@ fails with exit code 4 ("missing scope"), add the matching scope to the app and 
 
 ## 2. Install jortt
 
+### macOS and Linux
+
 Run this in your terminal:
 
 ```sh
@@ -89,6 +91,35 @@ curl -fsSL https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download
 | `--no-setup` | Don't start the wizard; run `jortt setup` yourself later |
 | `--no-modify-path` | Don't touch your shell's startup file |
 
+### Windows
+
+Open **PowerShell** (Start menu → type "PowerShell") and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "iex ((New-Object Net.WebClient).DownloadString('https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.ps1'))"
+```
+
+The installer:
+
+- picks the build for your processor (x64 or ARM64);
+- checks it against the release's `SHA256SUMS`, and stops if it doesn't match;
+- puts it in `%LOCALAPPDATA%\Programs\jortt\jortt.exe` and adds that folder to your user PATH (no administrator
+  rights needed);
+- starts the setup wizard (step 3).
+
+`-ExecutionPolicy Bypass` only applies to this one command; it doesn't change your system's settings. To pass
+options, set these environment variables before the command:
+
+| Variable | What it does |
+|---|---|
+| `$env:JORTT_VERSION = "v0.2.0"` | Install a specific release instead of the latest |
+| `$env:JORTT_INSTALL_DIR = "C:\Tools\jortt"` | Install somewhere else |
+| `$env:JORTT_NO_SETUP = "1"` | Don't start the wizard; run `jortt setup` yourself later |
+| `$env:JORTT_NO_MODIFY_PATH = "1"` | Don't change your user PATH |
+
+Use jortt from PowerShell or Command Prompt. If you prefer, you can also run the Linux version inside
+[WSL](https://learn.microsoft.com/windows/wsl/install).
+
 <details>
 <summary><b>Prefer to look before you run it?</b></summary>
 
@@ -104,6 +135,17 @@ Or skip the script: download the binary for your system (`jortt-darwin-arm64`, `
 `SHA256SUMS` from the [latest release](https://github.com/ig-shadow-walker/JorttCLI/releases/latest), check it
 with `shasum -a 256 -c SHA256SUMS --ignore-missing`, make it executable with `chmod +x`, and move it onto your
 PATH as `jortt`.
+
+On Windows, the same in PowerShell:
+
+```powershell
+irm https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.ps1 -OutFile install.ps1
+notepad install.ps1
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Or download `jortt-windows-x64.exe` (or `-arm64.exe`) yourself, compare `(Get-FileHash .\jortt-windows-x64.exe).Hash`
+with its line in `SHA256SUMS`, rename it to `jortt.exe` and put it in a folder on your PATH.
 
 </details>
 
@@ -162,7 +204,8 @@ What happens along the way:
   connection or reinstall the skill.
 - **Cancelled with Ctrl-C?** Nothing is saved.
 
-Your answers go to `~/.config/jortt/credentials`, a file only your user can read (mode 600).
+Your answers go to `~/.config/jortt/credentials`, a file only your user can read (mode 600). On Windows the file
+is `%APPDATA%\jortt\credentials`, inside your user profile, which other users of the PC can't read.
 
 ## 4. Check that it works
 
@@ -222,50 +265,47 @@ you're ready.
 
 Follow these steps in order. Run each command yourself; don't ask the user to run anything except `jortt setup`.
 
-1. **Check the system.** Run `uname -s` and `uname -m`. jortt supports macOS (`Darwin`) and Linux on `x86_64`
-   or `arm64`/`aarch64`. On Windows, stop and tell the user to install WSL and run you inside it.
+1. **Check the system.** On macOS or Linux, run `uname -s` and `uname -m`: jortt supports `Darwin` and `Linux`
+   on `x86_64` or `arm64`/`aarch64`. On Windows (64-bit, Windows 10 1809 or newer), use PowerShell for the steps
+   below.
 
 2. **Install the binary, without the wizard.** The wizard needs the user's keyboard, and the Client Secret must
-   not pass through you:
+   not pass through you.
+
+   macOS and Linux:
 
    ```sh
    curl -fsSL https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.sh | sh -s -- --no-setup
    ```
 
-   It installs to `~/.local/bin/jortt`. Your current shell may not have that on its PATH yet, so use the full
-   path in the next steps.
+   Windows (PowerShell):
 
-3. **Check it runs:**
-
-   ```sh
-   ~/.local/bin/jortt --version
+   ```powershell
+   $env:JORTT_NO_SETUP = "1"
+   iex ((New-Object Net.WebClient).DownloadString('https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.ps1'))
    ```
 
-4. **Install the skill.** For Claude Code:
+   It installs to `~/.local/bin/jortt`, or `%LOCALAPPDATA%\Programs\jortt\jortt.exe` on Windows. Your current
+   shell may not have that on its PATH yet, so use the full path in the next steps. Below, `JORTT` stands for
+   that full path: `~/.local/bin/jortt`, or `& "$env:LOCALAPPDATA\Programs\jortt\jortt.exe"` in PowerShell.
 
-   ```sh
-   ~/.local/bin/jortt skill install
-   ```
+3. **Check it runs:** `JORTT --version`
 
-   For another agent, install it where that agent reads skills or instructions:
-   `~/.local/bin/jortt skill install --dir <folder>`. Then read the installed `SKILL.md`; it explains how to use
-   jortt safely.
+4. **Install the skill.** For Claude Code: `JORTT skill install`. For another agent, install it where that agent
+   reads skills or instructions: `JORTT skill install --dir <folder>`. Then read the installed `SKILL.md`; it
+   explains how to use jortt safely.
 
 5. **Hand over to the user for the credentials.** Tell them, in your own words:
 
-   > jortt is installed. To connect it to your Jortt administration, open a terminal window and run
-   > `jortt setup` (or `~/.local/bin/jortt setup` if the command isn't found yet). It asks for the Client ID
+   > jortt is installed. To connect it to your Jortt administration, open a new terminal window (on Windows: a
+   > new PowerShell window) and run `jortt setup`. It asks for the Client ID
    > and Client Secret of your Jortt API app. If you don't have one yet, create one at
    > https://app.jortt.nl/new_profile/api/jortt/oauth_applications/list (type: client credentials).
    > Let me know when it's done.
 
    Then wait for the user.
 
-6. **Verify the connection:**
-
-   ```sh
-   ~/.local/bin/jortt auth test --json
-   ```
+6. **Verify the connection:** `JORTT auth test --json`
 
    `"ok": true` with an `organization` means it's ready; tell the user which administration is connected.
    Exit code 3 means setup hasn't been completed; ask the user to run `jortt setup` again. Exit code 4 means the
@@ -302,6 +342,12 @@ export JORTT_SCOPES="invoices:read reports:read"   # optional; defaults to every
 jortt auth test --json
 ```
 
+On Windows, in PowerShell, with the secret on the clipboard or in a secrets store:
+
+```powershell
+Get-Clipboard | jortt setup --client-id <your-client-id> --client-secret-stdin
+```
+
 Don't pass the secret as a command-line argument: it would end up in shell history and process lists.
 
 ## Updating, changing and removing
@@ -311,9 +357,10 @@ Don't pass the secret as a command-line argument: it would end up in shell histo
 | Update jortt | Run the install command again. Your credentials and skill are kept. |
 | Change credentials or scopes | `jortt setup` |
 | Refresh the Claude skill after an update | `jortt skill install` |
-| Connect a second administration | `JORTT_CONFIG_DIR=~/.config/jortt-other jortt setup`, then prefix commands with the same `JORTT_CONFIG_DIR=…` |
+| Connect a second administration | `JORTT_CONFIG_DIR=~/.config/jortt-other jortt setup`, then prefix commands with the same `JORTT_CONFIG_DIR=…` (PowerShell: set `$env:JORTT_CONFIG_DIR` first) |
 | Forget the cached token | `jortt auth clear` |
-| Uninstall | `rm ~/.local/bin/jortt && rm -r ~/.config/jortt ~/.claude/skills/jortt`, and remove the PATH line the installer added to your shell's startup file (marked `# Added by the jortt installer`) |
+| Uninstall (macOS, Linux) | `rm ~/.local/bin/jortt && rm -r ~/.config/jortt ~/.claude/skills/jortt`, and remove the PATH line the installer added to your shell's startup file (marked `# Added by the jortt installer`) |
+| Uninstall (Windows) | In PowerShell: `Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\jortt", "$env:APPDATA\jortt", "$HOME\.claude\skills\jortt"`, then remove the jortt folder from your user PATH (Settings → System → About → Advanced system settings → Environment Variables) |
 
 To revoke access completely, also delete the API app in Jortt.
 
@@ -322,13 +369,16 @@ To revoke access completely, also delete the API app in Jortt.
 | Problem | What to do |
 |---|---|
 | `jortt: command not found` | Open a new terminal so the PATH change takes effect, or run `~/.local/bin/jortt`. |
+| `jortt` "is not recognized" (Windows) | Open a new PowerShell window so the PATH change takes effect, or run `& "$env:LOCALAPPDATA\Programs\jortt\jortt.exe"`. |
 | "Jortt did not accept that Client ID and Secret" | Copy both again from the app in Jortt. Make sure it's a **client credentials** app. |
 | "Your Jortt app doesn't have every scope jortt asks for" | Not an error: the wizard continues with the scopes your app has. Add more in Jortt and rerun `jortt setup` to unlock the rest. |
 | A command fails with exit code 4 | The app lacks the scope for it. Add it in Jortt, then run `jortt setup`. |
 | The wizard asks for an Organization ID | Your credentials reach more than one administration. Use the ID of the one you want; after setup, `jortt organizations list` shows them all. |
 | "Setup needs a Client ID" | `jortt setup` ran without a keyboard attached (for example from an agent). Run it in a terminal window, or see [Servers and CI](#servers-and-ci). |
 | "checksum mismatch" during install | The download was damaged or tampered with, and nothing was installed. Try again; if it keeps happening, open an issue. |
-| Windows | Use [WSL](https://learn.microsoft.com/windows/wsl/install) and install inside it. |
+| "Windows protected your PC" when starting a `jortt-windows-*.exe` you downloaded in a browser | The binary isn't code-signed yet. Check its hash against `SHA256SUMS` first (see [Install jortt](#2-install-jortt)), then choose **More info → Run anyway**. The PowerShell installer doesn't trigger this. |
+| `--data '{...}'` fails with a JSON error in Windows PowerShell | Windows PowerShell 5.1 strips the quotes inside arguments. Put the JSON in a file and use `--data-file body.json`, or use PowerShell 7. |
+| The hidden prompt doesn't work in your terminal | Pipe the secret in instead: `Get-Clipboard \| jortt setup --client-id <id> --client-secret-stdin` (Windows), or `pbpaste \| …` (macOS). |
 
 Still stuck? Run the failing command with `-v` to see the HTTP requests (your secret and token are never
 printed), and open an issue with the output and the error message.

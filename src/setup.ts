@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, resolve } from "node:path";
+import { basename, delimiter, dirname, resolve } from "node:path";
 import { requestToken } from "./auth.ts";
 import {
   type Config,
@@ -257,16 +257,19 @@ export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): 
 export function binDirMissingFromPath(env: Record<string, string | undefined> = process.env): string | null {
   const exe = process.execPath;
   if (!basename(exe).startsWith("jortt")) return null;
+  const win = process.platform === "win32";
   const real = (p: string) => {
     try {
-      return realpathSync(resolve(p.replace(/^~(?=\/|$)/, homedir())));
+      const r = realpathSync(resolve(p.replace(/^~(?=[\\/]|$)/, homedir())));
+      return win ? r.toLowerCase() : r;
     } catch {
       return undefined;
     }
   };
   const dir = dirname(exe);
-  const target = real(dir) ?? dir;
-  const onPath = (env.PATH ?? "").split(":").some((p) => p && real(p) === target);
+  const target = real(dir) ?? (win ? dir.toLowerCase() : dir);
+  const pathVar = env.PATH ?? env.Path ?? "";
+  const onPath = pathVar.split(delimiter).some((p) => p && real(p.replace(/^"|"$/g, "")) === target);
   return onPath ? null : dir;
 }
 
@@ -285,7 +288,13 @@ export function setupSummary(r: SetupResult): string[] {
   else if (r.skill) lines.push(`✓ Claude skill ${r.skill.action} in ${r.skill.dir}.`);
   for (const w of r.warnings) lines.push(`! ${w}`);
   const bin = binDirMissingFromPath();
-  if (bin) lines.push(`! ${bin} is not on your PATH. Add it:  export PATH="${bin}:$PATH"`);
+  if (bin) {
+    lines.push(
+      process.platform === "win32"
+        ? `! ${bin} is not on your PATH. Run the installer again, or add it under Settings > System > About > Advanced system settings > Environment Variables.`
+        : `! ${bin} is not on your PATH. Add it:  export PATH="${bin}:$PATH"`,
+    );
+  }
   lines.push("", "You're set. Try:", "  jortt invoices list --status unpaid");
   if (r.skill) lines.push("", 'Or ask Claude Code: "Which of my Jortt invoices are still unpaid?"');
   lines.push("");

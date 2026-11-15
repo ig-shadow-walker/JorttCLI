@@ -1,6 +1,6 @@
 /**
- * Builds the files for a GitHub release into dist/release: one binary per platform, install.sh and
- * SHA256SUMS. Nothing is uploaded; publish them yourself, e.g.
+ * Builds the files for a GitHub release into dist/release: one binary per platform, install.sh,
+ * install.ps1 and SHA256SUMS. Nothing is uploaded; publish them yourself, e.g.
  *   gh release create v0.1.0 dist/release/* --title v0.1.0
  *
  *   bun run build:release            # all platforms
@@ -18,7 +18,11 @@ const TARGETS: Record<string, string> = {
   "jortt-linux-x64": "bun-linux-x64-baseline",
   "jortt-linux-arm64-musl": "bun-linux-arm64-musl",
   "jortt-linux-x64-musl": "bun-linux-x64-musl-baseline",
+  "jortt-windows-x64.exe": "bun-windows-x64-baseline",
+  "jortt-windows-arm64.exe": "bun-windows-arm64",
 };
+
+const INSTALLERS = ["install.sh", "install.ps1"];
 
 const filter = process.argv[2];
 const out = new URL("../dist/release/", import.meta.url).pathname;
@@ -30,13 +34,13 @@ for (const name of names) {
   console.log(`building ${name} (${TARGETS[name]})`);
   await $`bun build src/cli.ts --compile --minify --no-compile-autoload-dotenv --target=${TARGETS[name]!} --outfile ${out + name}`.quiet();
 }
-await $`cp install.sh ${out}install.sh`;
+for (const f of INSTALLERS) await $`cp ${f} ${out + f}`;
 
 const sums: string[] = [];
-for (const name of [...names, "install.sh"]) {
+for (const name of [...names, ...INSTALLERS]) {
   const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(out + name).arrayBuffer()).digest("hex");
   sums.push(`${hash}  ${name}`);
 }
 await Bun.write(out + "SHA256SUMS", sums.join("\n") + "\n");
-console.log(`\njortt ${pkg.version}: ${names.length} binaries, install.sh and SHA256SUMS in dist/release/`);
+console.log(`\njortt ${pkg.version}: ${names.length} binaries, installers and SHA256SUMS in dist/release/`);
 console.log(`Publish:  gh release create v${pkg.version} dist/release/* --title v${pkg.version}`);

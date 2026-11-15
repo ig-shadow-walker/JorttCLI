@@ -22,6 +22,8 @@ Every command and its options: [reference.md](reference.md), or `jortt <group> <
 - Top-level body fields are flags (`--customer-name "Acme BV"`, `--is-private false`). For nested data
   (line items, amounts) pass JSON with `--data '{…}'` or `--data-file body.json`; `--set line_items.0.quantity=2`
   tweaks one field.
+- On Windows PowerShell, write JSON bodies to a file and use `--data-file` (or pipe them into `--data-file -`):
+  Windows PowerShell 5.1 strips the quotes inside `--data '{…}'`.
 
 ## Reads run; changes come back as a plan
 

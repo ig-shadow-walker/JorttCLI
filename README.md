@@ -44,7 +44,8 @@ invoice_number  customer_company_name  invoice_due_amount
   fixed meanings, `--fields` and `--limit` keep answers small, and `--all` pages through everything.
 - **Your credentials stay yours.** The setup wizard asks for them in your terminal and stores them in one file
   that only you can read. They never go in the project, in a chat or in a command line.
-- **One file to install.** A single binary for macOS and Linux, with no runtime to install, set up by a wizard.
+- **One file to install.** A single binary for macOS, Linux and Windows, with no runtime to install, set up by a
+  wizard.
 
 ## Quick start
 
@@ -53,10 +54,18 @@ invoice_number  customer_company_name  invoice_due_amount
 app of the **client credentials** type, tick the scopes you want, and keep the Client ID and Secret at hand.
 The [setup guide](docs/setup.md#1-create-an-api-app-in-jortt) explains each scope.
 
-**2. Install** (macOS or Linux; on Windows, use WSL):
+**2. Install.**
+
+macOS and Linux:
 
 ```sh
 curl -fsSL https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "iex ((New-Object Net.WebClient).DownloadString('https://github.com/ig-shadow-walker/JorttCLI/releases/latest/download/install.ps1'))"
 ```
 
 **3. Answer the setup wizard.** It starts by itself after the install, and you can rerun it any time
@@ -73,6 +82,9 @@ Install the Claude skill, so Claude Code knows how to use jortt? [Y/n]
 ✓ Claude skill installed in ~/.claude/skills/jortt.
 ```
 
+On Windows, the credentials go to `%APPDATA%\jortt\credentials` and the skill to
+`%USERPROFILE%\.claude\skills\jortt`.
+
 **4. Use it.**
 
 ```sh
@@ -85,6 +97,29 @@ Or ask Claude Code: *"Which of my Jortt invoices are late?"*
 
 Want an AI agent to do the install for you? See
 [Install with an AI agent](docs/setup.md#install-with-an-ai-agent).
+
+To update, run the install command again; your credentials are kept. Uninstalling is covered in the
+[setup guide](docs/setup.md#updating-changing-and-removing).
+
+## Supported platforms
+
+| System | Processors | Install with |
+|---|---|---|
+| macOS 13 (Ventura) or newer | Apple silicon, Intel | `install.sh` |
+| Linux (glibc or musl, e.g. Ubuntu, Debian, Fedora, Alpine) | x64, arm64 | `install.sh` |
+| Windows 10 (1809 or newer), Windows 11 | x64, ARM64 | `install.ps1` |
+
+Every release has a single binary for each of these: no Node, Bun or other runtime is needed.
+
+**Notes for Windows**
+
+- Use jortt from PowerShell or Command Prompt. The installer adds `%LOCALAPPDATA%\Programs\jortt` to your user
+  PATH, so open a new window after installing.
+- Windows PowerShell 5.1 strips the quotes inside arguments, which breaks inline JSON such as
+  `--data '{"description":"Q4"}'`. Put the JSON in a file and pass `--data-file body.json`, or use PowerShell 7.
+- The binaries aren't code-signed yet. The PowerShell installer doesn't trigger SmartScreen; an `.exe` you
+  download in a browser does. See [Troubleshooting](docs/setup.md#troubleshooting).
+- You can also run the Linux version inside WSL.
 
 ## How changes work: plan, then apply
 
@@ -147,7 +182,8 @@ You still do those in the Jortt app.
 
 jortt is designed to be driven by an agent:
 
-- **Claude Code:** `jortt setup` (or `jortt skill install`) puts the skill in `~/.claude/skills/jortt`. Claude
+- **Claude Code:** `jortt setup` (or `jortt skill install`) puts the skill in `~/.claude/skills/jortt`
+  (`%USERPROFILE%\.claude\skills\jortt` on Windows). Claude
   uses it whenever you mention Jortt, invoices, offertes, BTW and so on, in English or Dutch.
 - **Other agents** (Codex, Cursor, Gemini CLI, your own): anything that can run shell commands can use jortt.
   Give it the skill as instructions, with `jortt skill install --dir <folder>` or by pointing it at
@@ -179,8 +215,9 @@ of every change, want to script your bookkeeping, or use an agent that runs comm
 
 ## Security and privacy
 
-- **Credentials** live in `~/.config/jortt/credentials`, readable only by you (mode 600). The access token is
-  cached next to them in `token.json`, also mode 600, and renewed automatically.
+- **Credentials** live in `~/.config/jortt/credentials`, readable only by you (mode 600). On Windows they are in
+  `%APPDATA%\jortt\credentials`, inside your user profile. The access token is cached next to them in
+  `token.json` and renewed automatically.
 - **Only Jortt is contacted:** `api.jortt.nl` and Jortt's login server at `app.jortt.nl`. jortt refuses to send
   your token anywhere else. There is no telemetry.
 - **No secrets in commands.** The Client Secret is typed into a hidden prompt, or piped in with
@@ -201,9 +238,9 @@ Everything is configured by `jortt setup`; you normally don't need anything belo
 | Variable | What it does |
 |---|---|
 | `JORTT_CLIENT_ID`, `JORTT_CLIENT_SECRET`, `JORTT_SCOPES`, `JORTT_ORGANIZATION_ID` | Override the saved credentials, e.g. in CI or a container |
-| `JORTT_CONFIG_DIR` | Use another folder than `~/.config/jortt` |
+| `JORTT_CONFIG_DIR` | Use another folder than `~/.config/jortt` (Windows: `%APPDATA%\jortt`) |
 | `JORTT_OUTPUT=json` | Always print JSON, as if `--json` were given |
-| `CLAUDE_SKILLS_DIR` | Where `jortt skill install` puts the skill (default `~/.claude/skills`) |
+| `CLAUDE_SKILLS_DIR` | Where `jortt skill install` puts the skill (default `~/.claude/skills`, on Windows `%USERPROFILE%\.claude\skills`) |
 
 ## Development
 
@@ -217,8 +254,10 @@ bun run dev -- --help            # run from source
 bun test                         # tests run against a fake Jortt; no network, no credentials
 bun run typecheck
 bun run build                    # a single binary for this machine in dist/jortt
-bun run install:local            # build it, install it in ~/.local/bin and link the skill
+bun run install:local            # macOS/Linux: build it, install it in ~/.local/bin and link the skill
 ```
+
+On Windows, `bun run build` produces `dist\jortt.exe`; run it from there or copy it onto your PATH.
 
 How it fits together:
 
@@ -232,7 +271,11 @@ How it fits together:
 | `src/http.ts`, `src/auth.ts` | API client (throttling, retries, paging) and OAuth token |
 | `src/setup.ts`, `src/prompt.ts` | The setup wizard |
 | `skill/jortt/` | The Claude skill; `reference.md` is generated by `bun run reference` |
-| `install.sh`, `scripts/build-release.ts` | The installer and the release build |
+| `install.sh`, `install.ps1`, `scripts/build-release.ts` | The installers (macOS/Linux, Windows) and the release build |
+
+CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows, and installs a local build with
+`install.sh` and `install.ps1` the way a user would. To try an installer yourself without publishing anything,
+run `bun run build:release` and serve the files with `bun run scripts/serve-release.ts`.
 
 When Jortt changes its API, run `bun run sync-docs`, then `bun test`. The tests check that every command
 still points at a real endpoint and that the skill's reference matches the CLI.
@@ -240,7 +283,7 @@ still points at a real endpoint and that the skill's reference matches the CLI.
 ### Releasing
 
 ```sh
-bun run build:release            # binaries for 6 platforms + install.sh + SHA256SUMS in dist/release/
+bun run build:release            # 8 binaries (macOS, Linux, Windows) + both installers + SHA256SUMS in dist/release/
 gh release create v0.1.0 dist/release/* --title v0.1.0
 ```
 

@@ -1,0 +1,150 @@
+# Tests jortt and both installers on Linux, macOS and Windows. Uploads and publishes nothing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - name: Build the binary for this machine
+        run: bun run build
+      - name: Smoke-test the binary
+        env:
+          JORTT_CONFIG_DIR: ${{ runner.temp }}/jortt-config
+        run: |
+          set -eu
+          ./dist/jortt --version
+          ./dist/jortt endpoints send invoice --json > /dev/null
+          # Not set up yet: must say so with exit code 3.
+          code=0; ./dist/jortt invoices list --json > out.json || code=$?
+          test "$code" = 3 || { cat out.json; echo "expected exit 3, got $code"; exit 1; }
+          # A change makes a plan (exit 2) without contacting Jortt.
+          code=0; JORTT_CLIENT_ID=x JORTT_CLIENT_SECRET=y ./dist/jortt labels create --description ci --json > plan.json || code=$?
+          test "$code" = 2 || { cat plan.json; echo "expected exit 2, got $code"; exit 1; }
+          grep -q '"planMade": true' plan.json
+          ./dist/jortt skill install --dir "$RUNNER_TEMP/skill" --json > /dev/null
+          test -s "$RUNNER_TEMP/skill/SKILL.md" && test -s "$RUNNER_TEMP/skill/reference.md"
+
+  install-unix:
+    name: install.sh (${{ matrix.os }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Build release files for this system
+        run: bun run build:release ${{ runner.os == 'macOS' && 'darwin' || 'linux' }}
+      - name: Serve them locally
+        run: |
+          nohup bun run scripts/serve-release.ts dist/release 47812 > serve.log 2>&1 &
+          for i in $(seq 30); do curl -fsS http://127.0.0.1:47812/SHA256SUMS > /dev/null && break; sleep 1; done
+      - name: Install like a user would (curl | sh)
+        env:
+          JORTT_DOWNLOAD_URL: http://127.0.0.1:47812
+        run: |
+          set -eu
+          curl -fsSL http://127.0.0.1:47812/install.sh | sh -s -- --dir "$RUNNER_TEMP/bin" --no-setup --no-modify-path
+          "$RUNNER_TEMP/bin/jortt" --version
+          # Again, as an update over the existing binary.
+          curl -fsSL http://127.0.0.1:47812/install.sh | sh -s -- --dir "$RUNNER_TEMP/bin" --no-setup --no-modify-path
+      - name: A tampered download is refused
+        env:
+          JORTT_DOWNLOAD_URL: http://127.0.0.1:47812
+        run: |
+          for f in dist/release/jortt-*; do echo tampered >> "$f"; done
+          if sh install.sh --dir "$RUNNER_TEMP/bin2" --no-setup --no-modify-path; then echo "installed a tampered binary"; exit 1; fi
+          test ! -e "$RUNNER_TEMP/bin2/jortt"
+
+  install-windows:
+    name: install.ps1 (Windows)
+    needs: test
+    runs-on: windows-latest
+    env:
+      JORTT_DOWNLOAD_URL: http://127.0.0.1:47812
+      JORTT_NO_SETUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Build Windows release files
+        run: bun run build:release windows
+      - name: Serve them locally
+        shell: pwsh
+        run: |
+          Start-Process -FilePath bun -ArgumentList 'run','scripts/serve-release.ts','dist/release','47812' -WindowStyle Hidden
+          for ($i = 0; $i -lt 30; $i++) {
+            try { Invoke-WebRequest http://127.0.0.1:47812/SHA256SUMS -UseBasicParsing | Out-Null; break } catch { Start-Sleep 1 }
+          }
+      - name: One-line install in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $env:JORTT_INSTALL_DIR = "$env:RUNNER_TEMP\jortt-51"
+          iex ((New-Object Net.WebClient).DownloadString('http://127.0.0.1:47812/install.ps1'))
+          & "$env:RUNNER_TEMP\jortt-51\jortt.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "jortt.exe does not run" }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not ($userPath -split ';' | Where-Object { $_ -ieq "$env:RUNNER_TEMP\jortt-51" })) { throw "not added to the user PATH: $userPath" }
+      - name: Install as a file in PowerShell 7, then update over it
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\jortt-7"
+          ./dist/release/install.ps1 -InstallDir $dir -NoModifyPath
+          ./dist/release/install.ps1 -InstallDir $dir -NoModifyPath
+          & "$dir\jortt.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "jortt.exe does not run" }
+      - name: The installed binary works
+        shell: pwsh
+        env:
+          JORTT_CONFIG_DIR: ${{ runner.temp }}\jortt-config
+        run: |
+          $jortt = "$env:RUNNER_TEMP\jortt-7\jortt.exe"
+          & $jortt invoices list --json | Out-Null
+          if ($LASTEXITCODE -ne 3) { throw "expected exit 3 when not set up, got $LASTEXITCODE" }
+          $env:JORTT_CLIENT_ID = 'x'; $env:JORTT_CLIENT_SECRET = 'y'
+          $plan = & $jortt labels create --description ci --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 2 -or -not $plan.data.planMade) { throw "expected a plan (exit 2), got $LASTEXITCODE" }
+          Set-Content -Path body.json -Value '{"description":"from a file"}'
+          & $jortt labels create --data-file body.json --json | Out-Null
+          if ($LASTEXITCODE -ne 2) { throw "expected a plan from --data-file, got $LASTEXITCODE" }
+          & $jortt skill install --dir "$env:RUNNER_TEMP\skill" --json | Out-Null
+          if (-not (Test-Path "$env:RUNNER_TEMP\skill\SKILL.md")) { throw "skill not installed" }
+      - name: A tampered download is refused
+        shell: pwsh
+        run: |
+          Add-Content -Path dist/release/jortt-windows-x64.exe -Value 'tampered'
+          $failed = $false
+          try { ./dist/release/install.ps1 -InstallDir "$env:RUNNER_TEMP\jortt-bad" -NoModifyPath } catch { $failed = $true; Write-Host "refused: $_" }
+          if (-not $failed) { throw "installed a tampered binary" }
+          if (Test-Path "$env:RUNNER_TEMP\jortt-bad\jortt.exe") { throw "tampered binary is on disk" }

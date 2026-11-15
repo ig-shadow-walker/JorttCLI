@@ -180,7 +180,8 @@ describe("token cache isolation", () => {
   let saved: NodeJS.ProcessEnv;
   beforeEach(() => (saved = { ...process.env }));
   afterEach(() => (process.env = saved));
-  test("token file is private (0600)", async () => {
+  // Windows has no Unix mode bits; files in the user profile are protected by its ACL instead.
+  test.skipIf(process.platform === "win32")("token file is private (0600)", async () => {
     const { FakeJortt } = await import("./helpers.ts");
     const dir = mkdtempSync(join(tmpdir(), "jortt-tok-"));
     const fake = new FakeJortt().install();

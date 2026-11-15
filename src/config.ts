@@ -79,14 +79,17 @@ export function parseCredentials(text: string): Record<string, string> {
 }
 
 export function expandHome(p: string): string {
-  return p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p;
+  return p === "~" || p.startsWith("~/") || p.startsWith("~\\") ? join(homedir(), p.slice(1)) : p;
 }
 
+/** ~/.config/jortt on macOS and Linux, %APPDATA%\\jortt on Windows; JORTT_CONFIG_DIR overrides both. */
 export function configDir(env: Record<string, string | undefined> = process.env): string {
-  return resolve(expandHome(env.JORTT_CONFIG_DIR || join(homedir(), ".config", "jortt")));
+  if (env.JORTT_CONFIG_DIR) return resolve(expandHome(env.JORTT_CONFIG_DIR));
+  if (process.platform === "win32") return join(env.APPDATA || join(homedir(), "AppData", "Roaming"), "jortt");
+  return join(homedir(), ".config", "jortt");
 }
 
-/** Where `jortt setup` saves the credentials: ~/.config/jortt/credentials (mode 600). */
+/** Where `jortt setup` saves the credentials: <config dir>/credentials (mode 600; on Windows, your user profile's ACL). */
 export function credentialsPath(env: Record<string, string | undefined> = process.env): string {
   return join(configDir(env), "credentials");
 }

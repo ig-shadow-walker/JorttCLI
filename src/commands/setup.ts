@@ -51,8 +51,10 @@ export function registerSetup(program: Command) {
         "",
         "Run it in a terminal and answer the questions. Unattended:",
         "  op read op://Finance/Jortt/secret | jortt setup --client-id <id> --client-secret-stdin --json",
+        "  Get-Clipboard | jortt setup --client-id <id> --client-secret-stdin     (Windows PowerShell)",
         "",
-        "Credentials are saved to ~/.config/jortt/credentials (mode 600). Run it again any time to change them.",
+        "Credentials are saved to ~/.config/jortt/credentials (%APPDATA%\\jortt\\credentials on Windows), readable",
+        "only by you. Run it again any time to change them.",
       ].join("\n"),
     )
     .action(

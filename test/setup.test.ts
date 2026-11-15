@@ -75,7 +75,7 @@ describe("jortt setup", () => {
     expect(r.scopes).not.toContain("reconciling:read");
 
     const file = join(env.dir, "credentials");
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     const saved = parseCredentials(readFileSync(file, "utf8"));
     expect(saved.JORTT_CLIENT_ID).toBe("good-client");
     expect(saved.JORTT_CLIENT_SECRET).toBe("good-secret");
@@ -165,6 +165,7 @@ describe("skill install", () => {
     expect(r.json.data.action).toBe("installed");
     expect(readFileSync(join(dir, "reference.md"), "utf8")).toContain("# jortt command reference");
     expect(installSkill("x", { dir }).action).toBe("updated");
+    if (process.platform === "win32") return; // symlinks need extra rights on Windows
 
     const linked = join(env.dir, "linked");
     mkdirSync(join(env.dir, "repo-skill"));

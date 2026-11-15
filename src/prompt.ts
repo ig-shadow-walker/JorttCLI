@@ -29,6 +29,16 @@ function write(text: string): void {
   writeSync(2, text);
 }
 
+/** This terminal can't do hidden input; say how to set up without it. */
+function noTerminal(e: unknown): JorttError {
+  return new JorttError(`This terminal can't read the answers (${(e as Error).message}).`, Exit.ERROR, {
+    key: "setup.no_terminal",
+    hint:
+      "Pipe the secret in instead: `jortt setup --client-id <id> --client-secret-stdin`, e.g. with the secret on " +
+      "the clipboard: `pbpaste | …` (macOS) or `Get-Clipboard | …` (Windows PowerShell).",
+  });
+}
+
 /** One blocking read from the terminal. Retries when stdin was left non-blocking. */
 function readChunk(buf: Buffer, decoder: StringDecoder): string {
   for (;;) {
@@ -57,14 +67,23 @@ function readLine(question: string, secret: boolean): string {
   const stdin = process.stdin;
   const wasRaw = stdin.isRaw;
   // Raw mode before the prompt shows, so nothing typed (or pasted) right away is echoed in the clear.
-  stdin.setRawMode(true);
+  try {
+    stdin.setRawMode(true);
+  } catch (e) {
+    throw noTerminal(e);
+  }
   write(question);
   const raw = Buffer.alloc(1024);
   const decoder = new StringDecoder("utf8");
   let line = "";
   try {
     for (;;) {
-      const chunk = pending || readChunk(raw, decoder);
+      let chunk: string;
+      try {
+        chunk = pending || readChunk(raw, decoder);
+      } catch (e) {
+        throw noTerminal(e);
+      }
       pending = "";
       for (let i = 0; i < chunk.length; i++) {
         const ch = chunk[i]!;
