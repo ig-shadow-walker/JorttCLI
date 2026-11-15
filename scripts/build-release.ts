@@ -1,7 +1,7 @@
 /**
  * Builds the files for a GitHub release into dist/release: one binary per platform, install.sh,
  * install.ps1 and SHA256SUMS. Nothing is uploaded: the Release workflow (.github/workflows/release.yml)
- * runs this on GitHub and attaches the files when a release is published.
+ * runs this on GitHub when started by hand and attaches the files to the release.
  *
  *   bun run build:release            # all platforms
  *   bun run build:release darwin     # only names containing "darwin"
@@ -46,4 +46,4 @@ for (const name of [...names, ...INSTALLERS]) {
 }
 await Bun.write(join(out, "SHA256SUMS"), sums.join("\n") + "\n");
 console.log(`\njortt ${pkg.version}: ${names.length} binaries, installers and SHA256SUMS in dist/release/`);
-console.log(`To publish: push, then publish a GitHub release tagged v${pkg.version}; the Release workflow builds and uploads these.`);
+console.log(`To publish: push, then publish a GitHub release tagged v${pkg.version}, then run the Release workflow by hand (Actions > Release > Run workflow) to build and upload these.`);

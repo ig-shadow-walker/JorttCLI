@@ -1,10 +1,8 @@
 name: Release
 
 # Builds the jortt binaries, install.sh and SHA256SUMS and attaches them to a GitHub release.
-# Runs automatically when a release is published; can also be run by hand for an existing tag.
+# Runs only when started by hand for an existing release tag: Actions tab > Release > Run workflow.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:

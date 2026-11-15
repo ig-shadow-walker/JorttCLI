@@ -274,7 +274,8 @@ How it fits together:
 | `install.sh`, `install.ps1`, `scripts/build-release.ts` | The installers (macOS/Linux, Windows) and the release build |
 
 CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows, and installs a local build with
-`install.sh` and `install.ps1` the way a user would. To try an installer yourself without publishing anything,
+`install.sh` and `install.ps1` the way a user would. It doesn't run on push: start it from the Actions tab
+(CI > Run workflow). To try an installer yourself without publishing anything,
 run `bun run build:release` and serve the files with `bun run scripts/serve-release.ts`.
 
 When Jortt changes its API, run `bun run sync-docs`, then `bun test`. The tests check that every command
@@ -285,10 +286,11 @@ still points at a real endpoint and that the skill's reference matches the CLI.
 1. Add a section to [CHANGELOG.md](CHANGELOG.md), set `version` in `package.json` (for example `0.3.0`), commit
    and push.
 2. Publish a GitHub release whose tag is that version with a `v` in front (`v0.3.0`).
+3. In the Actions tab, open **Release**, choose **Run workflow** and enter the tag (`v0.3.0`).
 
-The [Release workflow](.github/workflows/release.yml) then runs the tests, builds the 8 binaries (macOS, Linux,
-Windows), `install.sh`, `install.ps1` and `SHA256SUMS`, and attaches them to the release. It refuses to run if the
-tag doesn't match `package.json`. The one-line installers always fetch the latest release.
+The [Release workflow](.github/workflows/release.yml) runs the tests, builds the 8 binaries (macOS, Linux,
+Windows), `install.sh`, `install.ps1` and `SHA256SUMS`, and attaches them to the release. It doesn't start on its
+own when a release is published, and it refuses to run if the tag doesn't match `package.json`. The one-line installers always fetch the latest release.
 
 To build the same files locally without publishing anything: `bun run build:release` (output in `dist/release/`).
 

@@ -1,10 +1,8 @@
 # Tests jortt and both installers on Linux, macOS and Windows. Uploads and publishes nothing.
+# Runs only when started by hand: Actions tab > CI > Run workflow.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
