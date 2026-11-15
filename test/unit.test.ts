@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applySets, coerce, validateBody } from "../src/body.ts";
 import { bodyFields, getEndpoint, matchEndpoint, resolveId } from "../src/catalog.ts";
-import { loadConfig, parseEnvFile } from "../src/config.ts";
+import { loadConfig, parseCredentials } from "../src/config.ts";
 import { Exit, JorttError, fromApiError } from "../src/errors.ts";
 import { buildUrl } from "../src/http.ts";
 import { pickFields } from "../src/output.ts";
@@ -12,36 +12,40 @@ import { riskReasons } from "../src/risk.ts";
 import { summarize } from "../src/runtime.ts";
 
 describe("config", () => {
-  test("parses .env files", () => {
-    const env = parseEnvFile(`# comment\nexport A=1\nB="two words" \nC='x # y'\nD=plain # trailing\nE=\n`);
+  test("parses the credentials file", () => {
+    const env = parseCredentials(`# comment\nexport A=1\nB="two words" \nC='x # y'\nD=plain # trailing\nE=\n`);
     expect(env).toEqual({ A: "1", B: "two words", C: "x # y", D: "plain", E: "" });
   });
 
-  test("real env beats ./.env beats config dir, and only JORTT_* keys are read", () => {
+  test("environment beats the credentials file; nothing is read from the current folder", () => {
     const cfgDir = mkdtempSync(join(tmpdir(), "jortt-cfg-"));
+    writeFileSync(join(cfgDir, "credentials"), "JORTT_CLIENT_ID=from-file\nJORTT_CLIENT_SECRET=file-secret\nJORTT_ORGANIZATION_ID=org-1\nOTHER=x\n");
+    const before = process.cwd();
     const cwd = mkdtempSync(join(tmpdir(), "jortt-cwd-"));
-    writeFileSync(join(cfgDir, ".env"), "JORTT_CLIENT_ID=from-config\nJORTT_CLIENT_SECRET=config-secret\nJORTT_ORGANIZATION_ID=org-1\n");
-    writeFileSync(join(cwd, ".env"), "JORTT_CLIENT_ID=from-cwd\nJORTT_CLIENT_SECRET=\nOTHER=x\n");
-    const c = loadConfig({ JORTT_CONFIG_DIR: cfgDir, JORTT_SCOPES: "invoices:read, customers:read" }, cwd);
-    expect(c.clientId).toBe("from-cwd");
-    expect(c.clientSecret).toBe("config-secret"); // empty value in ./.env doesn't override
-    expect(c.organizationId).toBe("org-1");
-    expect(c.scopes).toBe("invoices:read customers:read");
-    expect(c.envFiles).toEqual([join(cwd, ".env"), join(cfgDir, ".env")]);
-
-    const c2 = loadConfig({ JORTT_CONFIG_DIR: cfgDir, JORTT_CLIENT_ID: "from-env" }, cwd);
-    expect(c2.clientId).toBe("from-env");
+    writeFileSync(join(cwd, ".env"), "JORTT_CLIENT_ID=from-cwd\n");
+    process.chdir(cwd);
+    try {
+      const c = loadConfig({ JORTT_CONFIG_DIR: cfgDir, JORTT_SCOPES: "invoices:read, customers:read" });
+      expect(c.clientId).toBe("from-file");
+      expect(c.clientSecret).toBe("file-secret");
+      expect(c.organizationId).toBe("org-1");
+      expect(c.scopes).toBe("invoices:read customers:read");
+      expect(c.credentialsFile).toBe(join(cfgDir, "credentials"));
+      expect(loadConfig({ JORTT_CONFIG_DIR: cfgDir, JORTT_CLIENT_ID: "from-env" }).clientId).toBe("from-env");
+    } finally {
+      process.chdir(before);
+    }
   });
 
-  test("missing credentials is an auth error with a hint", () => {
+  test("missing credentials is an auth error pointing at jortt setup", () => {
     const empty = mkdtempSync(join(tmpdir(), "jortt-empty-"));
     try {
-      loadConfig({ JORTT_CONFIG_DIR: empty }, empty);
+      loadConfig({ JORTT_CONFIG_DIR: empty });
       throw new Error("should fail");
     } catch (e) {
       expect(e).toBeInstanceOf(JorttError);
       expect((e as JorttError).exitCode).toBe(Exit.AUTH);
-      expect((e as JorttError).message).toContain("JORTT_CLIENT_ID is missing");
+      expect((e as JorttError).extra.hint).toContain("jortt setup");
     }
   });
 });
@@ -182,7 +186,7 @@ describe("token cache isolation", () => {
     const fake = new FakeJortt().install();
     try {
       const { getToken, tokenPath } = await import("../src/auth.ts");
-      const cfg = loadConfig({ JORTT_CONFIG_DIR: dir, JORTT_CLIENT_ID: "a", JORTT_CLIENT_SECRET: "b" }, dir);
+      const cfg = loadConfig({ JORTT_CONFIG_DIR: dir, JORTT_CLIENT_ID: "a", JORTT_CLIENT_SECRET: "b" });
       await getToken(cfg);
       const { statSync } = await import("node:fs");
       expect(statSync(tokenPath(cfg)).mode & 0o777).toBe(0o600);

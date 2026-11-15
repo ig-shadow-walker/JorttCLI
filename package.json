@@ -2,6 +2,11 @@
   "name": "jortt-cli",
   "version": "0.1.0",
   "description": "Command-line tool for the Jortt accounting API, built for AI agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ig-shadow-walker/JorttCLI.git"
+  },
   "type": "module",
   "private": true,
   "bin": {

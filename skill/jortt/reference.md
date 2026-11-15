@@ -94,7 +94,7 @@ Credentials and access token
 
 `jortt auth status`
 
-Show which credentials and env files are used (no network)
+Show which credentials and scopes are used (no network)
 
 ### auth test
 

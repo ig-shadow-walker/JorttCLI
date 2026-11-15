@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildProgram } from "../src/cli.ts";
-import { parseEnvFile } from "../src/config.ts";
+import { parseCredentials } from "../src/config.ts";
 import { JorttError } from "../src/errors.ts";
 import type { AskOptions, Prompter } from "../src/prompt.ts";
 import { buildReference } from "../src/reference.ts";
-import { runSetup, writeEnvFile } from "../src/setup.ts";
+import { runSetup, writeCredentials } from "../src/setup.ts";
 import { installSkill } from "../src/skill.ts";
 import { FakeJortt, json, runCli, testEnv } from "./helpers.ts";
 
@@ -61,7 +61,7 @@ describe("jortt setup", () => {
 
   test("interactive: re-asks after wrong credentials, trims scopes the app lacks, saves privately", async () => {
     const io = new ScriptedPrompter(["bad-client", "bad-secret", "good-client", "good-secret", "y"]);
-    const r = await runSetup({}, io, { reference, env: vars, cwd: env.dir });
+    const r = await runSetup({}, io, { reference, env: vars });
     expect(io.asked).toEqual([
       "Client ID",
       "Client Secret (hidden)",
@@ -74,9 +74,9 @@ describe("jortt setup", () => {
     expect(r.missingScopes).toEqual(["reconciling:read", "reconciling:write"]);
     expect(r.scopes).not.toContain("reconciling:read");
 
-    const file = join(env.dir, ".env");
+    const file = join(env.dir, "credentials");
     expect(statSync(file).mode & 0o777).toBe(0o600);
-    const saved = parseEnvFile(readFileSync(file, "utf8"));
+    const saved = parseCredentials(readFileSync(file, "utf8"));
     expect(saved.JORTT_CLIENT_ID).toBe("good-client");
     expect(saved.JORTT_CLIENT_SECRET).toBe("good-secret");
     expect(saved.JORTT_SCOPES).toBe(r.scopes.join(" "));
@@ -85,20 +85,20 @@ describe("jortt setup", () => {
   });
 
   test("interactive: keeps saved credentials when confirmed, and keeps other JORTT_ settings", async () => {
-    writeFileSync(join(env.dir, ".env"), "JORTT_CLIENT_ID=good-client\nJORTT_CLIENT_SECRET=good-secret\nJORTT_FOO=keep me\n");
+    writeFileSync(join(env.dir, "credentials"), "JORTT_CLIENT_ID=good-client\nJORTT_CLIENT_SECRET=good-secret\nJORTT_FOO=keep me\n");
     const io = new ScriptedPrompter(["", "n"]);
-    const r = await runSetup({ scopes: "invoices:read organizations:read" }, io, { reference, env: vars, cwd: env.dir });
+    const r = await runSetup({ scopes: "invoices:read organizations:read" }, io, { reference, env: vars });
     expect(io.asked[0]).toContain("Use the saved credentials (Client ID good…ient)?");
     expect(r.skill).toBeNull();
-    const saved = parseEnvFile(readFileSync(join(env.dir, ".env"), "utf8"));
+    const saved = parseCredentials(readFileSync(join(env.dir, "credentials"), "utf8"));
     expect(saved.JORTT_FOO).toBe("keep me");
     expect(saved.JORTT_SCOPES).toBe("invoices:read organizations:read");
   });
 
   test("cancelling at the last question saves nothing", async () => {
     const io = new ScriptedPrompter(["good-client", "good-secret", "<ctrl-c>"]);
-    await expect(runSetup({}, io, { reference, env: vars, cwd: env.dir })).rejects.toThrow(/cancelled/);
-    expect(existsSync(join(env.dir, ".env"))).toBe(false);
+    await expect(runSetup({}, io, { reference, env: vars })).rejects.toThrow(/cancelled/);
+    expect(existsSync(join(env.dir, "credentials"))).toBe(false);
   });
 
   test("non-interactive: uses flags, never asks, fails clearly without a secret", async () => {
@@ -106,7 +106,7 @@ describe("jortt setup", () => {
     const r = await runSetup(
       { clientId: "good-client", clientSecret: "good-secret", scopes: "invoices:read", skill: false },
       quiet,
-      { reference, env: vars, cwd: env.dir },
+      { reference, env: vars },
     );
     expect(r.checked).toBe(true);
     expect(r.organization).toBeNull(); // no organizations:read, so not looked up
@@ -115,7 +115,7 @@ describe("jortt setup", () => {
     const empty = testEnv();
     try {
       await expect(
-        runSetup({ clientId: "x" }, new ScriptedPrompter([], false), { reference, env: { JORTT_CONFIG_DIR: empty.dir }, cwd: empty.dir }),
+        runSetup({ clientId: "x" }, new ScriptedPrompter([], false), { reference, env: { JORTT_CONFIG_DIR: empty.dir } }),
       ).rejects.toThrow(/needs a Client Secret/);
     } finally {
       empty.cleanup();
@@ -132,16 +132,16 @@ describe("jortt setup", () => {
       )
       .install();
     const io = new ScriptedPrompter(["good-client", "good-secret", "org-2", "n"]);
-    const r = await runSetup({ scopes: "organizations:read" }, io, { reference, env: vars, cwd: env.dir });
+    const r = await runSetup({ scopes: "organizations:read" }, io, { reference, env: vars });
     expect(io.asked[2]).toBe("Organization ID");
     expect(r.organization?.company_name).toBe("Tweede BV");
-    expect(parseEnvFile(readFileSync(join(env.dir, ".env"), "utf8")).JORTT_ORGANIZATION_ID).toBe("org-2");
+    expect(parseCredentials(readFileSync(join(env.dir, "credentials"), "utf8")).JORTT_ORGANIZATION_ID).toBe("org-2");
   });
 
-  test("env file values with spaces and quotes survive a round trip", () => {
-    const file = join(env.dir, "rt.env");
-    writeEnvFile(file, { JORTT_CLIENT_SECRET: 'a b"c#d', JORTT_SCOPES: "x y" });
-    expect(parseEnvFile(readFileSync(file, "utf8"))).toMatchObject({ JORTT_CLIENT_SECRET: 'a b"c#d', JORTT_SCOPES: "x y" });
+  test("credential values with spaces and quotes survive a round trip", () => {
+    const file = join(env.dir, "rt-credentials");
+    writeCredentials(file, { JORTT_CLIENT_SECRET: 'a b"c#d', JORTT_SCOPES: "x y" });
+    expect(parseCredentials(readFileSync(file, "utf8"))).toMatchObject({ JORTT_CLIENT_SECRET: 'a b"c#d', JORTT_SCOPES: "x y" });
   });
 
   test("CLI: setup without a terminal or credentials explains what to do", async () => {

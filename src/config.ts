@@ -4,6 +4,10 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { Exit, JorttError } from "./errors.ts";
 
+/**
+ * Every scope a jortt command can use (Jortt's published list, minus organizations:write, which no
+ * command needs). `jortt setup` trims this to what the user's Jortt app was registered with.
+ */
 export const DEFAULT_SCOPES = [
   "organizations:read",
   "customers:read",
@@ -14,9 +18,10 @@ export const DEFAULT_SCOPES = [
   "estimates:write",
   "expenses:read",
   "expenses:write",
-  "receipts:read",
   "inbox:write",
   "reports:read",
+  "payroll:read",
+  "payroll:write",
   "financing:read",
   "reconciling:read",
   "reconciling:write",
@@ -48,12 +53,12 @@ export interface Config {
   apiUrl: string;
   tokenUrl: string;
   configDir: string;
-  /** Env files that were read, in priority order. */
-  envFiles: string[];
+  /** The credentials file that was read, if there is one. */
+  credentialsFile: string | null;
 }
 
-/** Minimal .env parser: KEY=value, optional quotes, # comments, `export ` prefix. */
-export function parseEnvFile(text: string): Record<string, string> {
+/** Parser for the credentials file: KEY=value lines, optional quotes, # comments. */
+export function parseCredentials(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -81,26 +86,21 @@ export function configDir(env: Record<string, string | undefined> = process.env)
   return resolve(expandHome(env.JORTT_CONFIG_DIR || join(homedir(), ".config", "jortt")));
 }
 
-/** Env files to read, highest priority first. */
-export function envFileCandidates(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): string[] {
-  const list: string[] = [];
-  if (env.JORTT_ENV_FILE) list.push(resolve(expandHome(env.JORTT_ENV_FILE)));
-  list.push(resolve(cwd, ".env"));
-  list.push(join(configDir(env), ".env"));
-  return [...new Set(list)];
+/** Where `jortt setup` saves the credentials: ~/.config/jortt/credentials (mode 600). */
+export function credentialsPath(env: Record<string, string | undefined> = process.env): string {
+  return join(configDir(env), "credentials");
 }
 
 /**
- * Builds the config. Real environment variables win, then the env files in candidate order.
- * Only JORTT_* keys are taken from files, so an unrelated project's .env can't leak in.
+ * Builds the config from the credentials file that `jortt setup` writes. JORTT_* environment
+ * variables win over the file, for CI and containers. Nothing is read from the current folder.
  */
-export function loadConfig(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): Config {
+export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const merged: Record<string, string> = {};
-  const envFiles: string[] = [];
-  for (const file of envFileCandidates(env, cwd).reverse()) {
-    if (!existsSync(file)) continue;
-    envFiles.unshift(file);
-    for (const [k, v] of Object.entries(parseEnvFile(readFileSync(file, "utf8")))) {
+  const file = credentialsPath(env);
+  const found = existsSync(file);
+  if (found) {
+    for (const [k, v] of Object.entries(parseCredentials(readFileSync(file, "utf8")))) {
       if (k.startsWith("JORTT_") && v !== "") merged[k] = v;
     }
   }
@@ -108,13 +108,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   const parsed = schema.safeParse(merged);
   if (!parsed.success) {
-    const problems = parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`);
-    throw new JorttError(`Jortt credentials are not set up: ${problems.join("; ")}`, Exit.AUTH, {
-      key: "config.invalid",
-      hint:
-        `Run \`jortt setup\` in a terminal (it asks for the Client ID and Secret and saves them), or put ` +
-        `JORTT_CLIENT_ID and JORTT_CLIENT_SECRET in ${join(configDir(env), ".env")}. ` +
-        `Looked in: ${envFileCandidates(env, cwd).join(", ")}`,
+    throw new JorttError("jortt is not connected to Jortt yet.", Exit.AUTH, {
+      key: "config.missing",
+      hint: found
+        ? `${file} is incomplete. Run \`jortt setup\` in a terminal to fix it.`
+        : "Run `jortt setup` in a terminal: it asks for your Jortt Client ID and Secret, checks them and saves them.",
     });
   }
   const c = parsed.data;
@@ -126,6 +124,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     apiUrl: c.JORTT_API_URL,
     tokenUrl: c.JORTT_TOKEN_URL,
     configDir: configDir(env),
-    envFiles,
+    credentialsFile: found ? file : null,
   };
 }

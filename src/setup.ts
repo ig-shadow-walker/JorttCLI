@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { requestToken } from "./auth.ts";
 import {
   type Config,
@@ -8,8 +8,9 @@ import {
   DEFAULT_SCOPES,
   DEFAULT_TOKEN_URL,
   configDir,
+  credentialsPath,
   normalizeScopes,
-  parseEnvFile,
+  parseCredentials,
 } from "./config.ts";
 import { Exit, JorttError } from "./errors.ts";
 import { JorttClient } from "./http.ts";
@@ -33,11 +34,10 @@ export interface SetupDeps {
   /** reference.md for the skill, generated from the running CLI. */
   reference: () => string;
   env?: Record<string, string | undefined>;
-  cwd?: string;
 }
 
 export interface SetupResult {
-  envFile: string;
+  credentialsFile: string;
   clientId: string;
   scopes: string[];
   /** Scopes the CLI would like but the Jortt app doesn't have. */
@@ -58,11 +58,11 @@ function quoteEnv(v: string): string {
 }
 
 /** Writes the credentials file (mode 600), keeping any other JORTT_* settings that were in it. */
-export function writeEnvFile(file: string, values: Record<string, string | undefined>): void {
-  const previous = existsSync(file) ? parseEnvFile(readFileSync(file, "utf8")) : {};
+export function writeCredentials(file: string, values: Record<string, string | undefined>): void {
+  const previous = existsSync(file) ? parseCredentials(readFileSync(file, "utf8")) : {};
   const keep = Object.entries(previous).filter(([k, v]) => k.startsWith("JORTT_") && !(k in values) && v !== "");
   const lines = [
-    "# Jortt CLI credentials, written by `jortt setup`. Only you can read this file.",
+    "# jortt credentials, written by `jortt setup`. Only you can read this file. Keep it out of git.",
     "# Run `jortt setup` again to change them.",
     ...Object.entries(values)
       .filter(([, v]) => v !== undefined && v !== "")
@@ -101,9 +101,8 @@ function isBadCredentials(e: JorttError): boolean {
 /** The guided setup behind `jortt setup`. Interactive when the prompter is; otherwise flags, env and the existing file. */
 export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): Promise<SetupResult> {
   const env = deps.env ?? process.env;
-  const cwd = deps.cwd ?? process.cwd();
-  const file = join(configDir(env), ".env");
-  const saved = existsSync(file) ? parseEnvFile(readFileSync(file, "utf8")) : {};
+  const file = credentialsPath(env);
+  const saved = existsSync(file) ? parseCredentials(readFileSync(file, "utf8")) : {};
   const known = (k: string): string | undefined => env[k] || saved[k] || undefined;
   const warnings: string[] = [];
 
@@ -150,7 +149,7 @@ export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): 
     apiUrl: (known("JORTT_API_URL") ?? DEFAULT_API_URL).replace(/\/+$/, ""),
     tokenUrl: known("JORTT_TOKEN_URL") ?? DEFAULT_TOKEN_URL,
     configDir: configDir(env),
-    envFiles: [file],
+    credentialsFile: file,
   });
 
   // 1. Can we get a token? Fix what can be fixed here: wrong credentials, or scopes the app lacks.
@@ -225,7 +224,7 @@ export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): 
   // 3. Save. Every question is asked before this point, so cancelling a prompt leaves nothing behind.
   const wantSkill =
     o.skill ?? (io.interactive ? await io.confirm("Install the Claude skill, so Claude Code knows how to use jortt?", true) : true);
-  writeEnvFile(file, {
+  writeCredentials(file, {
     JORTT_CLIENT_ID: clientId,
     JORTT_CLIENT_SECRET: secret,
     JORTT_SCOPES: scopes,
@@ -235,12 +234,6 @@ export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): 
   for (const k of ["JORTT_CLIENT_ID", "JORTT_CLIENT_SECRET", "JORTT_SCOPES", "JORTT_ORGANIZATION_ID"]) {
     if (env[k]) warnings.push(`${k} is set in your environment and wins over ${file}.`);
   }
-  for (const other of [env.JORTT_ENV_FILE, join(cwd, ".env")]) {
-    if (!other || !existsSync(other) || realpathSync(other) === realpathSync(file)) continue;
-    if (Object.keys(parseEnvFile(readFileSync(other, "utf8"))).some((k) => k.startsWith("JORTT_"))) {
-      warnings.push(`${resolve(other)} also has JORTT_ settings and wins over ${file} when jortt runs from there.`);
-    }
-  }
 
   // 4. The Claude skill.
   const skill: SkillInstall | null = wantSkill
@@ -248,7 +241,7 @@ export async function runSetup(o: SetupOptions, io: Prompter, deps: SetupDeps): 
     : null;
 
   return {
-    envFile: file,
+    credentialsFile: file,
     clientId: mask(clientId),
     scopes: scopes.split(" "),
     missingScopes,
@@ -283,7 +276,7 @@ export function setupSummary(r: SetupResult): string[] {
   if (r.organization) lines.push(`✓ Connected to ${String(r.organization.company_name ?? r.organization.id)}.`);
   else if (r.checked) lines.push("✓ Jortt accepted the credentials.");
   else lines.push("! Saved without checking. Run `jortt auth test` once Jortt is reachable.");
-  lines.push(`✓ Saved to ${r.envFile} (only you can read it).`);
+  lines.push(`✓ Saved to ${r.credentialsFile} (only you can read it).`);
   if (r.missingScopes.length) {
     lines.push(`! Your Jortt app lacks these scopes, so the matching commands won't work: ${r.missingScopes.join(", ")}.`);
     lines.push("  Add them to the app in Jortt and run `jortt setup` again to use them.");

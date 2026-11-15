@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { clearCachedToken, getToken, readCachedToken, tokenPath } from "../auth.ts";
-import { configDir, envFileCandidates } from "../config.ts";
+import { configDir, credentialsPath } from "../config.ts";
 import { Exit } from "../errors.ts";
 import { mask } from "../setup.ts";
 import { listPlans, loadPlan, consumePlan, plansDir } from "../plans.ts";
@@ -52,7 +52,7 @@ export function registerSystem(program: Command) {
   const auth = program.command("auth").description("Credentials and access token");
   auth
     .command("status")
-    .description("Show which credentials and env files are used (no network)")
+    .description("Show which credentials and scopes are used (no network)")
     .action(
       action(async (rt: Runtime) => {
         const c = rt.config;
@@ -62,8 +62,8 @@ export function registerSystem(program: Command) {
           scopes: c.scopes.split(" "),
           organizationId: c.organizationId ?? null,
           apiUrl: c.apiUrl,
-          envFilesUsed: c.envFiles,
-          envFilesSearched: envFileCandidates(),
+          credentialsFile: c.credentialsFile ?? credentialsPath(),
+          fromEnvironment: ["JORTT_CLIENT_ID", "JORTT_CLIENT_SECRET", "JORTT_SCOPES", "JORTT_ORGANIZATION_ID"].filter((k) => !!process.env[k]),
           configDir: configDir(),
           token: t
             ? { cached: true, expiresAt: new Date(t.expiresAt).toISOString(), grantedScopes: t.scope.split(" "), file: tokenPath(c) }

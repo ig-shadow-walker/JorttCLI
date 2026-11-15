@@ -54,8 +54,8 @@ Take extra care when `dangerous` is not empty:
 | 5 | Jortt down, throttled or timed out | For a change: it may or may not have happened. Don't repeat it; check with a read first |
 | 6 | Not found | Re-check the id with a list/search |
 
-`jortt auth test` checks the whole setup (token + administration). `jortt auth status` shows which env
-file and scopes are used without calling Jortt. If a command fails with exit 4 because the Jortt app lacks a
+`jortt auth test` checks the whole setup (token + administration). `jortt auth status` shows which
+credentials file and scopes are used without calling Jortt. If a command fails with exit 4 because the Jortt app lacks a
 scope, the user adds it to the app in Jortt and runs `jortt setup` again.
 
 ## Which command for what
