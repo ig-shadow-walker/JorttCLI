@@ -1,13 +1,15 @@
 /**
  * Builds the files for a GitHub release into dist/release: one binary per platform, install.sh,
- * install.ps1 and SHA256SUMS. Nothing is uploaded; publish them yourself, e.g.
- *   gh release create v0.1.0 dist/release/* --title v0.1.0
+ * install.ps1 and SHA256SUMS. Nothing is uploaded: the Release workflow (.github/workflows/release.yml)
+ * runs this on GitHub and attaches the files when a release is published.
  *
  *   bun run build:release            # all platforms
  *   bun run build:release darwin     # only names containing "darwin"
  */
 import { $ } from "bun";
 import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import pkg from "../package.json" with { type: "json" };
 
 /** Asset name (what install.sh asks for) -> Bun compile target. x64 uses baseline builds so older CPUs work too. */
@@ -25,22 +27,23 @@ const TARGETS: Record<string, string> = {
 const INSTALLERS = ["install.sh", "install.ps1"];
 
 const filter = process.argv[2];
-const out = new URL("../dist/release/", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: on Windows the latter gives "/D:/..." which is not a path.
+const out = fileURLToPath(new URL("../dist/release/", import.meta.url));
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 const names = Object.keys(TARGETS).filter((n) => !filter || n.includes(filter));
 for (const name of names) {
   console.log(`building ${name} (${TARGETS[name]})`);
-  await $`bun build src/cli.ts --compile --minify --no-compile-autoload-dotenv --target=${TARGETS[name]!} --outfile ${out + name}`.quiet();
+  await $`bun build src/cli.ts --compile --minify --no-compile-autoload-dotenv --target=${TARGETS[name]!} --outfile ${join(out, name)}`.quiet();
 }
-for (const f of INSTALLERS) await $`cp ${f} ${out + f}`;
+for (const f of INSTALLERS) await $`cp ${f} ${join(out, f)}`;
 
 const sums: string[] = [];
 for (const name of [...names, ...INSTALLERS]) {
-  const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(out + name).arrayBuffer()).digest("hex");
+  const hash = new Bun.CryptoHasher("sha256").update(await Bun.file(join(out, name)).arrayBuffer()).digest("hex");
   sums.push(`${hash}  ${name}`);
 }
-await Bun.write(out + "SHA256SUMS", sums.join("\n") + "\n");
+await Bun.write(join(out, "SHA256SUMS"), sums.join("\n") + "\n");
 console.log(`\njortt ${pkg.version}: ${names.length} binaries, installers and SHA256SUMS in dist/release/`);
-console.log(`Publish:  gh release create v${pkg.version} dist/release/* --title v${pkg.version}`);
+console.log(`To publish: push, then publish a GitHub release tagged v${pkg.version}; the Release workflow builds and uploads these.`);

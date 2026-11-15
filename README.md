@@ -282,12 +282,15 @@ still points at a real endpoint and that the skill's reference matches the CLI.
 
 ### Releasing
 
-```sh
-bun run build:release            # 8 binaries (macOS, Linux, Windows) + both installers + SHA256SUMS in dist/release/
-gh release create v0.1.0 dist/release/* --title v0.1.0
-```
+1. Add a section to [CHANGELOG.md](CHANGELOG.md), set `version` in `package.json` (for example `0.3.0`), commit
+   and push.
+2. Publish a GitHub release whose tag is that version with a `v` in front (`v0.3.0`).
 
-Bump `version` in `package.json` first. The one-line installer always fetches the latest release.
+The [Release workflow](.github/workflows/release.yml) then runs the tests, builds the 8 binaries (macOS, Linux,
+Windows), `install.sh`, `install.ps1` and `SHA256SUMS`, and attaches them to the release. It refuses to run if the
+tag doesn't match `package.json`. The one-line installers always fetch the latest release.
+
+To build the same files locally without publishing anything: `bun run build:release` (output in `dist/release/`).
 
 ## Contributing
 
